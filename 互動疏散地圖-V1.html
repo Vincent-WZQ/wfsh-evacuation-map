@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>萬芳高中 — 3D 互動疏散路線圖（地震災害）v5</title>
+<style>
+  :root{--ink:#1a2127;--paper:#eef1ee;--line:#c4ccc4;--west:#c0392b;--east:#2563c4;--single:#d35400;--south-special:#8e44ad;--north-stair:#0e8074;--safe:#2e7d4f;--panel:#f7f9f6;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;background:var(--paper);color:var(--ink);overflow:hidden;}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;}
+  #panel{position:absolute;top:16px;left:16px;width:292px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);overflow-y:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;box-shadow:0 6px 24px rgba(20,30,25,.12);z-index:10;}
+  #panel h1{font-size:15px;margin:0 0 2px;}
+  #panel .sub{font-size:11px;color:#5a655c;margin:0 0 14px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:11px;font-weight:600;color:#445049;margin-bottom:5px;letter-spacing:.05em;}
+  select{width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font-family:inherit;}
+  .floors{display:flex;gap:6px;flex-wrap:wrap;}
+  .floors button{flex:1;min-width:42px;padding:7px 0;font-size:12px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;color:#445049;font-family:inherit;}
+  .floors button.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .floors button:hover:not(.active){background:#e6ebe4;}
+  #routeBtn{width:100%;margin-top:4px;padding:10px;border:none;border-radius:6px;background:#445049;color:#fff;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:.06em;font-family:inherit;}
+  #routeBtn.off{background:#7a8a80;}
+  .dest{margin-top:8px;font-size:11px;color:#445049;background:#e8f0ea;border:1px solid #bcd3c4;border-radius:6px;padding:7px 10px;line-height:1.6;}
+  .legend{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:#5a655c;line-height:1.8;}
+  .legend .dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle;}
+  .principle{margin-top:10px;font-size:11px;background:#fff4e8;border:1px solid #f0d8b8;border-radius:6px;padding:8px 10px;color:#8a5a1e;line-height:1.6;}
+  .note{margin-top:8px;font-size:10px;color:#7a8580;line-height:1.5;}
+  #tip{position:absolute;pointer-events:none;background:rgba(26,33,39,.92);color:#fff;font-size:13px;padding:5px 10px;border-radius:5px;z-index:20;display:none;white-space:nowrap;}
+  #hint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:11px;color:#5a655c;background:var(--panel);border:1px solid var(--line);padding:6px 14px;border-radius:20px;z-index:10;}
+  #compassBadge{position:absolute;top:16px;right:16px;z-index:10;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:11px;color:#445049;text-align:center;line-height:1.5;}
+  #compassBadge b{font-size:14px;}
+  label.chk{display:flex;align-items:center;gap:6px;font-size:11px;color:#445049;margin-top:8px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="panel">
+  <h1>萬芳高中 · 疏散路線</h1>
+  <p class="sub">地震災害 — 先避難再疏散 · 114年9月18日版 · 上北右東</p>
+  <div class="field"><label>所在樓棟</label>
+    <select id="buildingSel">
+      <option value="heping">和平樓</option>
+      <option value="xinyi">信義樓</option>
+      <option value="renai">仁愛樓</option>
+      <option value="zhongxiao">忠孝樓</option>
+      <option value="kexue">科學大樓</option>
+      <option value="xingzheng">行政大樓（簡化）</option>
+      <option value="huodong">活動中心（簡化）</option>
+    </select>
+  </div>
+  <div class="field" id="floorField"><label>所在樓層</label><div class="floors" id="floors"></div></div>
+  <button id="routeBtn">顯示疏散路線</button>
+  <div class="dest" id="dest"></div>
+  <label class="chk" id="arrowRow"><input type="checkbox" id="arrowChk" checked> 顯示各教室分流方向箭頭</label>
+  <div class="principle">先就地掩護 → 待搖晃停止 → 沿走廊分向樓梯 → 下至地面層 → 沿外部路線至避難場所</div>
+  <div class="legend" id="legend"></div>
+  <div class="note">預設視角自南側（校門側）向北，與紙本圖方位一致（上北右東），地面綠色箭頭指北。大操場為「就近避難場所」（就地疏散，非各棟集合點）。</div>
+</div>
+<div id="compassBadge"><b>N ↑</b><br>畫面上方為北</div>
+<div id="tip"></div>
+<div id="hint">拖曳旋轉 · 滾輪縮放 · 滑過教室查看名稱與方向</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js" }}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* 座標約定：+z = 北、+x = 西（y-up 右手座標系；自南側視角觀看時銀幕呈現「上北右東」）*/
+const FLOOR_H=3.6, CELL_W=4.8, ROOM_D=7.5;
+function C(name,type='room',dir=null,opt={}){return {name,type,dir,dest:opt.dest||null,span:opt.span||1};}
+const SKIP={type:'skip'};
+
+/* rows 由西→東（同圖面由左→右）；dir: W西側樓梯 E東側樓梯 S中央樓梯 N北側樓梯 */
+const BUILDINGS={
+  heping:{kind:'bar',title:'和平樓',dest:'north',zPos:24,xPos:-14,stairCols:[1,7],fMin:1,fMax:4,
+    rows:{
+      4:[C('女廁','aux'),C('','stair'),C('S201','room','W'),C('S202','room','W'),C('S203','room','W'),C('S204','room','E'),C('S205','room','E'),C('','stair'),C('S206','room','E'),C('女廁','aux')],
+      3:[C('男女廁','aux'),C('','stair'),C('高專一','room','W'),C('高專二','room','W'),C('S207','room','W'),C('S208','room','E'),C('S209','room','E'),C('','stair'),C('S210','room','E'),C('男廁','aux')],
+      2:[C('研究室','aux'),C('','stair'),C('高一導','room','W'),C('高二導','room','W'),C('S107','room','W'),C('S108','room','E'),C('S109','room','E'),C('','stair'),C('S110','room','E'),C('女廁','aux')],
+      1:[C('女廁','aux'),C('','stair'),C('S101','room','W'),C('S102','room','W'),C('S103','room','W'),C('S104','room','E'),C('S105','room','E'),C('','stair'),C('S106','room','E'),C('無障礙及男廁','aux')]
+    }},
+  xinyi:{kind:'bar',title:'信義樓',dest:'north',zPos:6,xPos:-14,stairCols:[1,7],fMin:1,fMax:4,
+    rows:{
+      4:[C('女廁','aux'),C('','stair'),C('S305','room','W'),C('S306','room','W'),C('S307','room','W'),C('S308','room','E'),C('S309','room','E'),C('','stair'),C('S310','room','E'),C('女廁','aux')],
+      3:[C('男女廁','aux'),C('','stair'),C('信義分組1','room','W'),C('高三導','room','W'),C('S301','room','W'),C('S302','room','E'),C('S303','room','E'),C('','stair'),C('S304','room','E'),C('男廁','aux')],
+      2:[C('男廁','aux'),C('','stair'),C('S311','room','W'),C('S211','room','W'),C('S111','room','W'),C('706','room','E',{dest:'south'}),C('806','room','E',{dest:'south'}),C('','stair'),C('906','room','E',{dest:'south'}),C('女廁','aux')],
+      1:[C('無障礙男女廁','aux'),C('','stair'),C('教官室','room','W'),C('學務處','room','W'),C('防災暨交安教室','room','W'),C('集乳室','room','E',{dest:'south'}),C('健康中心','room','E',{dest:'south'}),C('','stair'),C('體育組','room','E',{dest:'south'}),C('器材室','aux')]
+    }},
+  renai:{kind:'bar',title:'仁愛樓',dest:'south',zPos:-12,xPos:-8,stairCols:[1,7],fMin:1,fMax:4,
+    rows:{
+      4:[C('男廁','aux'),C('','stair'),C('仁愛分組7','room','W'),C('904','room','W'),C('903','room','W'),C('902','room','E'),C('901','room','E'),C('','stair'),C('女廁','aux')],
+      3:[C('女廁','aux'),C('','stair'),C('國七導','room','W'),C('國八導','room','W'),C('仁愛分組5','room','W'),C('仁愛分組6','room','E'),C('905','room','W'),C('','stair'),C('男廁','aux')],
+      2:[C('教師會','aux'),C('','stair'),C('國九導','room','W'),C('教務處','room','W'),C('油印室','room','W'),C('讀卡室','room','E'),C('會議室','room','E'),C('','stair'),C('女男廁','aux')],
+      1:[C('無障礙男女廁','aux'),C('','stair'),C('仁愛分組1','room','W'),C('仁愛分組2','room','W'),C('分組教室3','room','W'),C('仁愛分組4','room','E'),C('801','room','E'),C('','stair'),C('','aux')]
+    }},
+  zhongxiao:{kind:'bar',title:'忠孝樓',dest:'south',zPos:-30,xPos:0,stairCols:[2],fMin:1,fMax:4,
+    rows:{
+      4:[C('802','room','S'),C('803','room','S'),C('','stair'),C('804','room','S'),C('805','room','S'),C('男女廁','aux'),C('資源回收室','aux')],
+      3:[C('705','room','S'),C('忠孝分組1','room','S'),C('','stair'),C('忠孝分組2','room','S'),C('忠孝分組3','room','S'),C('男女廁','aux'),C('','aux')],
+      2:[C('701','room','S'),C('702','room','S'),C('','stair'),C('703','room','S'),C('704','room','S'),C('男女廁','aux'),C('','aux')],
+      1:[C('國專一','room','S'),C('圓輔室','room','S'),C('','stair'),C('輔導室','room','S'),C('資料室','room','S'),C('諮商室','aux'),C('無障礙男女廁','aux')]
+    }},
+  kexue:{kind:'L',title:'科學大樓',dest:'hq',xPos:22,zPos:2,fMin:0,fMax:4,
+    ew:{rows:{ // 西→東，7 格：idx0 西梯、idx6 轉角梯
+      4:[C('','stair'),C('儲藏室','aux'),C('美術(三)','room','W'),C('準備室','aux'),C('美術(二)','room','E'),C('創課教室','room','E'),C('','stair')],
+      3:[C('','stair'),C('男廁','aux'),C('生物(二)','room','W'),C('準備室','aux'),C('生物(一)','room','E'),C('音樂(三)','room','E'),C('','stair')],
+      2:[C('','stair'),C('男廁','aux'),C('化學(二)','room','W'),C('準備室','aux'),C('化學(一)','room','E'),C('設備組','room','E'),C('','stair')],
+      1:[C('','stair'),C('男廁','aux'),C('童軍教室','room','W'),C('生科童軍辦公室','aux'),C('生科(二)','room','E'),C('生科(一)','room','E'),C('','stair')],
+      0:[C('','stair'),C('雙語教室','room','E',{span:5}),SKIP,SKIP,SKIP,SKIP,C('','stair')]
+    }},
+    ns:{rows:{ // 北→南，6 格：idx0 北梯、idx5 轉角（由EW翼樓梯涵蓋）
+      4:[C('','stair'),C('儲藏室','aux'),C('音樂(二)','room','N'),C('準備室','aux'),C('音樂(一)','room','S'),SKIP],
+      3:[C('','stair'),C('女廁','aux'),C('地科','room','N'),C('準備室','aux'),C('家政教室','room','S'),SKIP],
+      2:[C('','stair'),C('儲藏室','aux'),C('物理(二)','room','N'),C('準備室','aux'),C('物理(一)','room','S'),SKIP],
+      1:[C('','stair'),C('女廁','aux'),C('熱食部','room','N'),C('烹飪教室','room','S'),C('男廁','aux'),SKIP],
+      0:[C('','stair'),C('射擊場','room','S',{span:4}),SKIP,SKIP,SKIP,SKIP]
+    }}},
+  /* 簡化棟：活動中心往南移至 zPos:-28 */
+  xingzheng:{kind:'mass',title:'行政大樓',dest:'south',xPos:32,zPos:-26,w:16,d:22,floors:4,
+    stairs:[{x:0,z:-2,label:'中央樓梯'}]},
+  huodong:{kind:'mass',title:'活動中心',dest:'south',xPos:58,zPos:-28,w:22,d:28,floors:4,
+    stairs:[{x:-9,z:8,label:'東北樓梯'},{x:-9,z:-8,label:'東南樓梯'}]}
+};
+const DEST_LABEL={north:'籃球場',south:'行政大樓前空地',hq:'合球場'};
+
+/* ───────── 場景 ───────── */
+const app=document.getElementById('app');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color('#eef1ee');
+scene.fog=new THREE.Fog('#eef1ee',160,460);
+const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.1,3000);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight('#ffffff','#bfc7bd',0.95));
+const sun=new THREE.DirectionalLight('#fff7ea',1.0);
+sun.position.set(-80,110,30); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-160,right:160,top:160,bottom:-160}); scene.add(sun);
+
+/* 地形 */
+function terrainY(z){const t=Math.min(1,Math.max(0,(z+50)/100));return 25+t*25;}
+const terrainGeo=new THREE.PlaneGeometry(300,300,100,100); terrainGeo.rotateX(-Math.PI/2);
+const tp=terrainGeo.attributes.position;
+for(let i=0;i<tp.count;i++){const z=tp.getZ(i);tp.setY(i,terrainY(z)+Math.sin(tp.getX(i)*0.05)*0.25);}
+terrainGeo.computeVertexNormals();
+const terrainMesh=new THREE.Mesh(terrainGeo,new THREE.MeshStandardMaterial({color:'#cdd4c6',roughness:1}));
+terrainMesh.receiveShadow=true; scene.add(terrainMesh);
+
+/* 相機（預設自南側上空向北看 → 上北右東）*/
+let target=new THREE.Vector3(0,42,10);
+let azim=Math.PI-0.18,polar=0.95,dist=130;
+const PMIN=0.22,PMAX=1.32,DMIN=42,DMAX=380;
+function updateCam(){
+  polar=Math.max(PMIN,Math.min(PMAX,polar)); dist=Math.max(DMIN,Math.min(DMAX,dist));
+  const x=target.x+dist*Math.sin(polar)*Math.sin(azim);
+  let y=target.y+dist*Math.cos(polar);
+  const z=target.z+dist*Math.sin(polar)*Math.cos(azim);
+  const minY=terrainY(z)+3; if(y<minY)y=minY;
+  camera.position.set(x,y,z); camera.lookAt(target);
+}
+let drag=false,px=0,py=0;
+renderer.domElement.addEventListener('pointerdown',e=>{drag=true;px=e.clientX;py=e.clientY;});
+addEventListener('pointerup',()=>drag=false);
+addEventListener('pointermove',e=>{ if(!drag)return; azim-=(e.clientX-px)*0.006; polar-=(e.clientY-py)*0.006; px=e.clientX;py=e.clientY; updateCam();});
+renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();dist*=(1+e.deltaY*0.001);updateCam();},{passive:false});
+
+/* 標籤 / 箭頭 */
+function makeLabel(text,opt={}){
+  const fs=opt.fs||44,pad=opt.pad||20;
+  const tc=document.createElement('canvas').getContext('2d'); tc.font=`bold ${fs}px "Noto Sans TC",sans-serif`;
+  const w=Math.max(tc.measureText(text).width,10);
+  const c=document.createElement('canvas'); c.width=w+pad*2; c.height=fs+pad;
+  const x=c.getContext('2d');
+  x.fillStyle=opt.bg||'rgba(255,255,255,.92)'; rr(x,0,0,c.width,c.height,10); x.fill();
+  x.fillStyle=opt.color||'#1a2127'; x.font=`bold ${fs}px "Noto Sans TC",sans-serif`;
+  x.textAlign='center';x.textBaseline='middle'; x.fillText(text,c.width/2,c.height/2);
+  const t=new THREE.CanvasTexture(c); t.anisotropy=4;
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthTest:opt.depthTest!==false}));
+  const sc=opt.scale||0.028; s.scale.set(c.width*sc,c.height*sc,1); return s;
+}
+function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+function makeArrow(dir){
+  const c=document.createElement('canvas'); c.width=96;c.height=64;
+  const x=c.getContext('2d');
+  const col = dir==='W'?'#c0392b':dir==='E'?'#2563c4':dir==='N'?'#0e8074':'#d35400';
+  x.fillStyle=col; x.strokeStyle='#fff'; x.lineWidth=4;
+  x.beginPath();
+  if(dir==='E'){ x.moveTo(8,22);x.lineTo(56,22);x.lineTo(56,12);x.lineTo(88,32);x.lineTo(56,52);x.lineTo(56,42);x.lineTo(8,42); }
+  else if(dir==='W'){ x.moveTo(88,22);x.lineTo(40,22);x.lineTo(40,12);x.lineTo(8,32);x.lineTo(40,52);x.lineTo(40,42);x.lineTo(88,42); }
+  else if(dir==='N'){ x.moveTo(48,56);x.lineTo(38,56);x.lineTo(38,24);x.lineTo(28,24);x.lineTo(48,4);x.lineTo(68,24);x.lineTo(58,24);x.lineTo(58,56); }
+  else { x.moveTo(48,8);x.lineTo(38,8);x.lineTo(38,40);x.lineTo(28,40);x.lineTo(48,60);x.lineTo(68,40);x.lineTo(58,40);x.lineTo(58,8); }
+  x.closePath(); x.fill(); x.stroke();
+  const t=new THREE.CanvasTexture(c); t.anisotropy=4;
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthTest:false}));
+  s.scale.set(2.4,1.6,1); return s;
+}
+function flatPlane(w,d,color,x,z,yOff=0.12){
+  const g=new THREE.PlaneGeometry(w,d); g.rotateX(-Math.PI/2);
+  const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color,roughness:1}));
+  m.position.set(x,terrainY(z)+yOff,z); m.receiveShadow=true; return m;
+}
+
+/* ───────── 固定脈絡（+x=西、−x=東、+z=北）───────── */
+const ctx3d=new THREE.Group(); scene.add(ctx3d);
+
+/* 大操場 */
+(function(){
+  const sh=new THREE.Shape(); sh.absellipse(0,0,46,14,0,Math.PI*2);
+  const hole=new THREE.Path(); hole.absellipse(0,0,34,8,0,Math.PI*2); sh.holes.push(hole);
+  const track=new THREE.Mesh(new THREE.ShapeGeometry(sh,48),new THREE.MeshStandardMaterial({color:'#bb6a52',roughness:1}));
+  track.rotation.x=-Math.PI/2; track.position.set(-2,50.12,66); ctx3d.add(track);
+  const inGeo=new THREE.Shape(); inGeo.absellipse(0,0,34,8,0,Math.PI*2);
+  const infield=new THREE.Mesh(new THREE.ShapeGeometry(inGeo,48),new THREE.MeshStandardMaterial({color:'#9fb88a',roughness:1}));
+  infield.rotation.x=-Math.PI/2; infield.position.set(-2,50.10,66); ctx3d.add(infield);
+  const l=makeLabel('大操場（就近避難場所·就地疏散）',{color:'#fff',bg:'rgba(90,101,92,.92)',fs:32,scale:0.055,depthTest:false});
+  l.position.set(-2,56,66); ctx3d.add(l);
+})();
+
+/* 球場與空地 */
+ctx3d.add(flatPlane(18,13,'#8fa3a8',4,44));
+const volL=makeLabel('排球場',{fs:34,scale:0.045,bg:'rgba(120,130,122,.85)',color:'#fff',depthTest:false}); volL.position.set(4,terrainY(44)+4,44); ctx3d.add(volL);
+const courtX=-28, courtZ=44, courtY=terrainY(44);
+ctx3d.add(flatPlane(22,13,'#b5763f',courtX,courtZ));
+const bkL=makeLabel('籃球場（疏散集合·避難場所）',{color:'#fff',bg:'rgba(46,125,79,.95)',fs:34,scale:0.055,depthTest:false});
+bkL.position.set(courtX,courtY+6,courtZ); ctx3d.add(bkL);
+
+const plazaX=24, plazaZ=-42, plazaY=terrainY(-42);
+ctx3d.add(flatPlane(26,10,'#9aa6ad',plazaX,plazaZ));
+const plL=makeLabel('行政大樓前空地（疏散集合·避難場所）',{color:'#fff',bg:'rgba(46,125,79,.95)',fs:32,scale:0.05,depthTest:false});
+plL.position.set(plazaX,plazaY+5,plazaZ); ctx3d.add(plL);
+
+ctx3d.add(flatPlane(26,16,'#b9c2ae',50,24));
+const hqL=makeLabel('合球場（科學大樓疏散集合）',{fs:30,scale:0.045,bg:'rgba(46,125,79,.9)',color:'#fff',depthTest:false}); hqL.position.set(50,terrainY(24)+4,24); ctx3d.add(hqL);
+ctx3d.add(flatPlane(11,10,'#c2cab4',64,-1));
+const tjL=makeLabel('童軍活動場',{fs:26,scale:0.034,bg:'rgba(120,130,122,.8)',color:'#fff',depthTest:false}); tjL.position.set(64,terrainY(-1)+3,-1); ctx3d.add(tjL);
+
+/* 游泳池也往南移至與活動中心對齊 */
+ctx3d.add(flatPlane(11,22,'#7fb2c9',77,-24));
+const swL=makeLabel('游泳池',{fs:28,scale:0.036,bg:'rgba(70,120,150,.85)',color:'#fff',depthTest:false}); swL.position.set(77,terrainY(-24)+3.5,-24); ctx3d.add(swL);
+
+ctx3d.add(flatPlane(28,4.5,'#c9cfbd',-14,15.2));
+const arL=makeLabel('射箭訓練場',{fs:24,scale:0.03,bg:'rgba(120,130,122,.75)',color:'#fff',depthTest:false}); arL.position.set(-14,terrainY(15)+2.6,15.2); ctx3d.add(arL);
+
+/* 道路與連接走廊 */
+ctx3d.add(flatPlane(78,4,'#c2c8c0',-8,32,0.08)); 
+ctx3d.add(flatPlane(4,72,'#c2c8c0',14,-3,0.08)); 
+ctx3d.add(flatPlane(4,76,'#c2c8c0',-44,-4,0.08)); 
+ctx3d.add(flatPlane(80,4,'#c2c8c0',-6,-39,0.08)); 
+ctx3d.add(flatPlane(2.6,62,'#d8dcd2',2,-3,0.1)); 
+ctx3d.add(flatPlane(16,2.6,'#d8dcd2',10,33,0.1)); 
+const rdL=makeLabel('中山路',{fs:22,scale:0.028,bg:'rgba(150,156,148,.75)',color:'#fff',depthTest:false}); rdL.position.set(22,terrainY(32)+2,32); ctx3d.add(rdL);
+const rd2=makeLabel('中正路',{fs:22,scale:0.028,bg:'rgba(150,156,148,.75)',color:'#fff',depthTest:false}); rd2.position.set(14,terrainY(14)+2,16); ctx3d.add(rd2);
+const rd3=makeLabel('忠孝路',{fs:22,scale:0.028,bg:'rgba(150,156,148,.75)',color:'#fff',depthTest:false}); rd3.position.set(-20,terrainY(-39)+2,-39); ctx3d.add(rd3);
+
+/* 校門與警衛室 */
+(function(){
+  const gy0=terrainY(-48);
+  [[25,-48],[15,-48]].forEach(p=>{const m=new THREE.Mesh(new THREE.BoxGeometry(1.4,4,1.4),new THREE.MeshStandardMaterial({color:'#8d958c'}));m.position.set(p[0],gy0+2,p[1]);m.castShadow=true;ctx3d.add(m);});
+  const gl=makeLabel('校門',{fs:30,scale:0.04,bg:'rgba(26,33,39,.85)',color:'#fff',depthTest:false}); gl.position.set(20,gy0+6,-48); ctx3d.add(gl);
+  const guard=new THREE.Mesh(new THREE.BoxGeometry(4,3,3.4),new THREE.MeshStandardMaterial({color:'#dfe4da'})); guard.position.set(8,gy0+1.5,-47.5); guard.castShadow=true; ctx3d.add(guard);
+  const gdl=makeLabel('警衛室',{fs:22,scale:0.026}); gdl.position.set(8,gy0+4.2,-47.5); ctx3d.add(gdl);
+})();
+
+/* 北向指標 */
+(function(){
+  const cx=-52,cz=-44,cy=terrainY(cz)+0.6;
+  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.4,8),new THREE.MeshStandardMaterial({color:0x2e7d4f}));
+  shaft.geometry.rotateX(Math.PI/2); shaft.position.set(cx,cy,cz+4); ctx3d.add(shaft);
+  const head=new THREE.Mesh(new THREE.ConeGeometry(1.3,3,12),new THREE.MeshStandardMaterial({color:0x2e7d4f}));
+  head.geometry.rotateX(Math.PI/2); head.position.set(cx,cy,cz+9.5); ctx3d.add(head);
+  const nl=makeLabel('北 N',{fs:30,scale:0.036,bg:'rgba(46,125,79,.95)',color:'#fff',depthTest:false});
+  nl.position.set(cx,cy+3,cz+11); ctx3d.add(nl);
+})();
+
+/* 簡化棟 */
+const massShafts={};
+function buildMass(key){
+  const B=BUILDINGS[key], by=terrainY(B.zPos), h=B.floors*FLOOR_H;
+  const g=new THREE.Group(); g.position.set(B.xPos,by,B.zPos);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(B.w,h,B.d),new THREE.MeshStandardMaterial({color:0xd3d8cd,roughness:1,transparent:true,opacity:0.5}));
+  body.position.y=h/2; body.castShadow=true; g.add(body);
+  for(let f=1;f<B.floors;f++){const ln=new THREE.Mesh(new THREE.BoxGeometry(B.w+0.1,0.1,B.d+0.1),new THREE.MeshStandardMaterial({color:0xb6bdb2}));ln.position.y=f*FLOOR_H;g.add(ln);}
+  massShafts[key]=[];
+  B.stairs.forEach(s=>{
+    const sh=new THREE.Mesh(new THREE.BoxGeometry(2.4,h,2.4),new THREE.MeshStandardMaterial({color:0x2e7d4f,roughness:.7,transparent:true,opacity:0.95}));
+    sh.position.set(s.x,h/2,s.z); g.add(sh);
+    const l=makeLabel(s.label||'樓梯',{color:'#fff',bg:'rgba(46,125,79,.95)',fs:26,scale:0.022,depthTest:false}); l.position.set(s.x,h+1,s.z); g.add(l);
+    massShafts[key].push({wx:B.xPos+s.x,wz:B.zPos+s.z,topY:by+h});
+  });
+  const t=makeLabel(B.title,{fs:44,scale:0.045,bg:'rgba(90,101,92,.9)',color:'#fff',depthTest:false}); t.position.set(0,h+3,0); g.add(t);
+  ctx3d.add(g);
+}
+buildMass('xingzheng'); buildMass('huodong');
+const enL=makeLabel('入口',{fs:22,scale:0.024,bg:'rgba(26,33,39,.8)',color:'#fff',depthTest:false});
+enL.position.set(32,terrainY(-26)+2.4,-37.5); ctx3d.add(enL);
+
+/* ───────── 作用中樓棟 ───────── */
+const buildingGroup=new THREE.Group(); scene.add(buildingGroup);
+const otherTeach=new THREE.Group(); scene.add(otherTeach);
+const roomMeshes=[]; const arrowSprites=[];
+const raycaster=new THREE.Raycaster(); const mouse=new THREE.Vector2();
+const matRoomHi=new THREE.MeshStandardMaterial({color:0xffe08a,roughness:1});
+let curKey='heping',curFloor=1,floorGroups={},geom={},baseY=0;
+
+function addStair(g,x,z,ori='EW'){
+  const dims = ori==='EW' ? [CELL_W*0.7,FLOOR_H*0.86,ROOM_D*0.55] : [ROOM_D*0.55,FLOOR_H*0.86,CELL_W*0.7];
+  const st=new THREE.Mesh(new THREE.BoxGeometry(...dims),new THREE.MeshStandardMaterial({color:0x2e7d4f,roughness:.7,transparent:true,opacity:1}));
+  st.position.set(x,FLOOR_H*0.43,z); st.userData={isStair:true}; g.add(st);
+  const l=makeLabel('樓梯',{color:'#fff',bg:'rgba(46,125,79,.95)',fs:32,scale:0.023});
+  l.position.set(x,FLOOR_H*0.95,z+(ori==='EW'?ROOM_D*0.15:0)); l.userData.isStairLbl=true; g.add(l);
+}
+function addCellEW(g,cell,xc,f){
+  const isAux=cell.type==='aux'; const w=CELL_W*cell.span*(isAux?0.9:0.95);
+  const mat=new THREE.MeshStandardMaterial({color:isAux?0xdfe4da:0xeef1ec,roughness:1,transparent:true,opacity:isAux?0.4:0.5});
+  const room=new THREE.Mesh(new THREE.BoxGeometry(w,FLOOR_H*0.8,ROOM_D*0.86),mat);
+  room.position.set(xc,FLOOR_H*0.4,0); room.userData={name:cell.name,floor:f,dir:cell.dir,dest:cell.dest,baseMat:mat,isAux};
+  g.add(room); roomMeshes.push(room);
+  const lbl=makeLabel(cell.name,{fs:isAux?32:44,scale:isAux?0.020:0.027,color:isAux?'#5a655c':'#1a2127'});
+  lbl.position.set(xc,FLOOR_H*0.5,-ROOM_D*0.46); lbl.userData.isLabel=true; g.add(lbl);
+  if(!isAux&&cell.dir){const ar=makeArrow(cell.dir);ar.position.set(xc,1.2,-ROOM_D*0.15);ar.userData={isArrow:true,floor:f};g.add(ar);arrowSprites.push(ar);}
+}
+function addCellNS(g,cell,zc,f){
+  const isAux=cell.type==='aux'; const d=CELL_W*cell.span*(isAux?0.9:0.95);
+  const mat=new THREE.MeshStandardMaterial({color:isAux?0xdfe4da:0xeef1ec,roughness:1,transparent:true,opacity:isAux?0.4:0.5});
+  const room=new THREE.Mesh(new THREE.BoxGeometry(ROOM_D*0.86,FLOOR_H*0.8,d),mat);
+  room.position.set(0,FLOOR_H*0.4,zc); room.userData={name:cell.name,floor:f,dir:cell.dir,dest:cell.dest,baseMat:mat,isAux};
+  g.add(room); roomMeshes.push(room);
+  const lbl=makeLabel(cell.name,{fs:isAux?32:44,scale:isAux?0.020:0.027,color:isAux?'#5a655c':'#1a2127'});
+  lbl.position.set(-ROOM_D*0.46,FLOOR_H*0.5,zc); lbl.userData.isLabel=true; g.add(lbl);
+  if(!isAux&&cell.dir){const ar=makeArrow(cell.dir);ar.position.set(-ROOM_D*0.15,1.2,zc);ar.userData={isArrow:true,floor:f};g.add(ar);arrowSprites.push(ar);}
+}
+
+function build(key){
+  curKey=key;
+  while(buildingGroup.children.length)buildingGroup.remove(buildingGroup.children[0]);
+  roomMeshes.length=0; arrowSprites.length=0; floorGroups={};
+  const B=BUILDINGS[key]; baseY=terrainY(B.zPos);
+  document.getElementById('floorField').style.display = B.kind==='mass'?'none':'';
+  document.getElementById('arrowRow').style.display = B.kind==='mass'?'none':'flex';
+
+  if(B.kind==='mass'){
+    geom={}; target.set(B.xPos,baseY+B.floors*FLOOR_H*0.5,B.zPos); azim=Math.PI-0.18;polar=0.92;dist=85; updateCam();
+    buildOtherTeach(key); updateDestText(); buildLegend();
+    if(routeOn)drawRoute();
+    return;
+  }
+  if(B.kind==='bar'){
+    const ncols=B.rows[1].length, bodyLen=ncols*CELL_W;
+    const colX=(i)=>bodyLen/2-i*CELL_W-CELL_W/2;       // 西→東：index 0 落在 +X（西）
+    const stairXs=B.stairCols.map(c=>colX(c));
+    geom={bodyLen,colX,stairXs,fMin:B.fMin};
+    buildingGroup.position.set(B.xPos,baseY,B.zPos);
+    for(let f=B.fMin;f<=B.fMax;f++){
+      const g=new THREE.Group(); g.position.y=(f-B.fMin)*FLOOR_H; floorGroups[f]=g; buildingGroup.add(g);
+      const slab=new THREE.Mesh(new THREE.BoxGeometry(bodyLen+1,0.25,ROOM_D+1.4),new THREE.MeshStandardMaterial({color:0xd7dbd2,roughness:.9}));
+      slab.position.set(0,-0.12,0); slab.castShadow=true; slab.receiveShadow=true; slab.userData={isSlab:true}; g.add(slab);
+      let i=0;
+      while(i<ncols){
+        const c=B.rows[f][i]; if(c.type==='skip'){i++;continue;}
+        const xc=colX(i)-(c.span-1)*CELL_W/2;
+        if(c.type==='stair'){addStair(g,xc,0,'EW');}
+        else if(c.name){
+          addCellEW(g,c,xc,f);
+          const dg=new THREE.PlaneGeometry(ROOM_D*0.86,FLOOR_H*0.8); dg.rotateY(Math.PI/2);
+          const dwall=new THREE.Mesh(dg,new THREE.MeshStandardMaterial({color:0x9aa39a,side:THREE.DoubleSide,transparent:true,opacity:.5}));
+          dwall.position.set(colX(i)-(c.span-0.525)*CELL_W,FLOOR_H*0.4,0); dwall.userData={isDiv:true}; g.add(dwall);
+        }
+        i+=c.span||1;
+      }
+      if(stairXs.length>=2){
+        const midX=(stairXs[0]+stairXs[stairXs.length-1])/2;
+        const dline=new THREE.Mesh(new THREE.BoxGeometry(0.25,FLOOR_H*0.82,ROOM_D*0.9),new THREE.MeshStandardMaterial({color:0x444444,transparent:true,opacity:0.35}));
+        dline.position.set(midX,FLOOR_H*0.41,0); dline.userData={isDivLine:true}; g.add(dline);
+      }
+    }
+    const titleLbl=makeLabel(B.title,{fs:54,scale:0.05,bg:'rgba(26,33,39,.9)',color:'#fff',depthTest:false});
+    titleLbl.position.set(0,(B.fMax-B.fMin+1)*FLOOR_H+3.5,0); buildingGroup.add(titleLbl);
+    target.set(B.xPos,baseY+(B.fMax-B.fMin+1)*FLOOR_H*0.5,B.zPos); azim=Math.PI-0.18;polar=0.9;dist=100; updateCam();
+  }
+  if(B.kind==='L'){
+    buildingGroup.position.set(B.xPos,baseY,B.zPos);
+    const ewN=7, ewLen=ewN*CELL_W, nsN=6, nsLen=nsN*CELL_W;
+    const ewX=i=>ewLen-i*CELL_W-CELL_W/2;              // 西端 +31.2 → 轉角 +2.4
+    const nsZ=j=>nsLen-j*CELL_W-CELL_W/2;              // 北端 26.4 → 轉角 2.4
+    geom={ewLen,nsLen,ewX,nsZ,fMin:B.fMin};
+    for(let f=B.fMin;f<=B.fMax;f++){
+      const g=new THREE.Group(); g.position.y=(f-B.fMin)*FLOOR_H; floorGroups[f]=g; buildingGroup.add(g);
+      const slabE=new THREE.Mesh(new THREE.BoxGeometry(ewLen+1,0.25,ROOM_D+1.4),new THREE.MeshStandardMaterial({color:0xd7dbd2,roughness:.9}));
+      slabE.position.set(ewLen/2,-0.12,0); slabE.castShadow=true; slabE.receiveShadow=true; slabE.userData={isSlab:true}; g.add(slabE);
+      const slabN=new THREE.Mesh(new THREE.BoxGeometry(ROOM_D+1.4,0.25,nsLen+1),new THREE.MeshStandardMaterial({color:0xd7dbd2,roughness:.9}));
+      slabN.position.set(0,-0.12,nsLen/2); slabN.castShadow=true; slabN.receiveShadow=true; slabN.userData={isSlab:true}; g.add(slabN);
+      let i=0; while(i<ewN){const c=B.ew.rows[f][i]; if(c.type==='skip'){i++;continue;} const xc=ewX(i)-(c.span-1)*CELL_W/2; if(c.type==='stair')addStair(g,xc,0,'EW'); else if(c.name)addCellEW(g,c,xc,f); i+=c.span||1;}
+      let j=0; while(j<nsN){const c=B.ns.rows[f][j]; if(c.type==='skip'){j++;continue;} const zc=nsZ(j)-(c.span-1)*CELL_W/2; if(c.type==='stair')addStair(g,0,zc,'NS'); else if(c.name)addCellNS(g,c,zc,f); j+=c.span||1;}
+    }
+    const titleLbl=makeLabel(B.title,{fs:54,scale:0.05,bg:'rgba(26,33,39,.9)',color:'#fff',depthTest:false});
+    titleLbl.position.set(10,(B.fMax-B.fMin+1)*FLOOR_H+3.5,14); buildingGroup.add(titleLbl);
+    target.set(B.xPos+8,baseY+9,B.zPos+12); azim=Math.PI-0.45;polar=0.95;dist=95; updateCam();
+  }
+  buildOtherTeach(key); setFloor(B.fMin===0?1:B.fMin); updateDestText(); buildLegend(); applyArrowVis();
+}
+
+function buildOtherTeach(activeKey){
+  while(otherTeach.children.length)otherTeach.remove(otherTeach.children[0]);
+  for(const k of ['heping','xinyi','renai','zhongxiao','kexue']){
+    if(k===activeKey)continue;
+    const B=BUILDINGS[k]; const by=terrainY(B.zPos);
+    const h=(B.fMax-B.fMin+1)*FLOOR_H;
+    const mat=new THREE.MeshStandardMaterial({color:0xc7cec3,roughness:1,transparent:true,opacity:0.32});
+    if(B.kind==='bar'){
+      const bodyLen=B.rows[1].length*CELL_W;
+      const ob=new THREE.Mesh(new THREE.BoxGeometry(bodyLen+1,h,ROOM_D+1.4),mat);
+      ob.position.set(B.xPos,by+h/2,B.zPos); otherTeach.add(ob);
+      const l=makeLabel(B.title,{fs:38,scale:0.034,bg:'rgba(120,130,122,.7)',color:'#fff',depthTest:false}); l.position.set(B.xPos,by+h+2,B.zPos); otherTeach.add(l);
+    } else {
+      const ewLen=7*CELL_W, nsLen=6*CELL_W;
+      const e=new THREE.Mesh(new THREE.BoxGeometry(ewLen+1,h,ROOM_D+1.4),mat); e.position.set(B.xPos+ewLen/2,by+h/2,B.zPos); otherTeach.add(e);
+      const n=new THREE.Mesh(new THREE.BoxGeometry(ROOM_D+1.4,h,nsLen+1),mat.clone()); n.position.set(B.xPos,by+h/2,B.zPos+nsLen/2); otherTeach.add(n);
+      const l=makeLabel(B.title,{fs:38,scale:0.034,bg:'rgba(120,130,122,.7)',color:'#fff',depthTest:false}); l.position.set(B.xPos+8,by+h+2,B.zPos+12); otherTeach.add(l);
+    }
+  }
+}
+
+function setFloor(f){
+  curFloor=f;
+  for(const k in floorGroups){const active=(+k===f),g=floorGroups[k];
+    g.traverse(o=>{
+      if(o.isMesh&&o.material){const u=o.userData;
+        if(u.isSlab){o.material.transparent=true;o.material.opacity=active?1:0.28;}
+        else if(u.isStair){o.material.transparent=true;o.material.opacity=active?1:0.24;}
+        else if(u.isDiv){o.material.transparent=true;o.material.opacity=active?0.55:0.05;}
+        else if(u.isDivLine){o.material.opacity=active?0.4:0;}
+        else if(u.baseMat){o.material.opacity=active?(u.isAux?0.4:0.5):0.05;}
+      }
+      if(o.isSprite&&o.userData.isLabel)o.material.opacity=active?1:0.04;
+      if(o.isSprite&&o.userData.isStairLbl)o.material.opacity=active?1:0.1;
+    });
+  }
+  buildFloorButtons(); applyArrowVis(); if(routeOn)drawRoute();
+}
+let showArrows=true;
+function applyArrowVis(){ arrowSprites.forEach(a=>{ a.visible = showArrows && a.userData.floor===curFloor; }); }
+
+/* ───────── 疏散路線引擎 ───────── */
+let routeOn=false,routeObj=null;
+function clearRoute(){if(routeObj){scene.remove(routeObj);routeObj=null;}}
+const COLS={ west:{t:0xc0392b,e:0x7a1d14,c:0xff5a44}, east:{t:0x2563c4,e:0x12326e,c:0x5b9bff}, single:{t:0xd35400,e:0x7a3000,c:0xff8c42}, southSp:{t:0x8e44ad,e:0x4a1f63,c:0xc77ae0}, northSt:{t:0x0e8074,e:0x06443d,c:0x3fc4b4} };
+function gy(z){return terrainY(z)+1;}
+function drawArrowPath(pts,col){
+  const curve=new THREE.CatmullRomCurve3(pts);
+  routeObj.add(new THREE.Mesh(new THREE.TubeGeometry(curve,160,0.42,8,false),new THREE.MeshStandardMaterial({color:col.t,emissive:col.e,emissiveIntensity:.3,roughness:.5})));
+  for(let i=0;i<16;i++){const cone=new THREE.Mesh(new THREE.ConeGeometry(0.62,1.5,10),new THREE.MeshStandardMaterial({color:col.c,emissive:col.t,emissiveIntensity:.4}));cone.userData={t:i/16,curve};routeObj.add(cone);}
+}
+const NB=[[-42,32],[-41,37],[-36,44],[-30,44]];
+function toV3(arr){return arr.map(p=>new THREE.Vector3(p[0],gy(p[1]),p[1]));}
+
+function destForSide(B,sideDir){
+  const rooms=B.rows[curFloor]||[];
+  for(const c of rooms){ if(c.dir===sideDir&&c.dest)return c.dest; }
+  return B.dest;
+}
+function descend(pts,stairWX,corrWZ,fMin){
+  for(let ff=curFloor;ff>=fMin;ff--)pts.push(new THREE.Vector3(stairWX,baseY+(ff-fMin)*FLOOR_H+FLOOR_H*0.5,corrWZ));
+  return pts;
+}
+function drawRoute(){
+  clearRoute(); routeObj=new THREE.Group();
+  const B=BUILDINGS[curKey];
+  if(B.kind==='bar')routeBar(B); else if(B.kind==='L')routeKexue(B); else routeMass(B);
+  scene.add(routeObj);
+}
+function routeBar(B){
+  const corrZ=B.zPos-ROOM_D*0.5-1.2, exitZ=corrZ-2;
+  const fY=baseY+(curFloor-B.fMin)*FLOOR_H+FLOOR_H*0.5;
+  const xs=geom.stairXs.map(x=>x+B.xPos);
+  const wStair=Math.max(...xs), eStair=Math.min(...xs);
+  const wEnd=B.xPos+geom.bodyLen/2+6, eEnd=B.xPos-geom.bodyLen/2-6;
+  function branch(stairWX,side){
+    const sideDir = side==='single'?'S':(side==='west'?'W':'E');
+    const dest = side==='single'?B.dest:destForSide(B,sideDir);
+    let col = side==='west'?COLS.west: side==='east'?COLS.east:COLS.single;
+    if(dest!==B.dest)col=COLS.southSp;
+    const mid = side==='single'?stairWX:(wStair+eStair)/2;
+    let pts=[new THREE.Vector3(mid,fY,corrZ),new THREE.Vector3(stairWX,fY,corrZ)];
+    descend(pts,stairWX,corrZ,B.fMin);
+    pts.push(new THREE.Vector3(stairWX,gy(exitZ),exitZ));
+    let tail=[];
+    if(side==='single'){ tail=[[stairWX,exitZ-2],[16,-41],[22,-42]]; }
+    else{
+      const endX=side==='west'?wEnd:eEnd;
+      pts.push(new THREE.Vector3(endX,gy(exitZ),exitZ));
+      if(dest==='north'){
+        tail = side==='west' ? [[endX,32],[-20,32]].concat(NB) : [[endX,32]].concat(NB);
+      } else {
+        tail = side==='west' ? [[endX,-37],[22,-40],[plazaX,plazaZ]] : [[endX,-37],[-6,-40],[plazaX-2,plazaZ]];
+      }
+    }
+    toV3(tail).forEach(v=>pts.push(v));
+    drawArrowPath(pts,col);
+  }
+  if(xs.length>=2){branch(wStair,'west');branch(eStair,'east');} else branch(xs[0],'single');
+}
+function routeKexue(B){
+  const fY=baseY+(curFloor-B.fMin)*FLOOR_H+FLOOR_H*0.5;
+  const corrZ=B.zPos-ROOM_D*0.5-1.2, exitZ=corrZ-2;
+  const corrX=B.xPos-(ROOM_D*0.5+1.2);
+  const wStair=B.xPos+geom.ewX(0), jStair=B.xPos+geom.ewX(6), nStairZ=B.zPos+geom.nsZ(0);
+  const ewMid=B.xPos+geom.ewLen/2, nsMid=B.zPos+geom.nsLen/2;
+  /* 西梯（紅）→ 直切合球場 */
+  let p1=[new THREE.Vector3(ewMid,fY,corrZ),new THREE.Vector3(wStair,fY,corrZ)];
+  descend(p1,wStair,corrZ,B.fMin);
+  p1.push(new THREE.Vector3(wStair,gy(exitZ),exitZ));
+  toV3([[wStair,10],[48,22]]).forEach(v=>p1.push(v));
+  drawArrowPath(p1,COLS.west);
+  /* 轉角梯（藍）→ 直切合球場 */
+  let p2=[new THREE.Vector3(ewMid,fY,corrZ),new THREE.Vector3(jStair,fY,corrZ)];
+  descend(p2,jStair,corrZ,B.fMin);
+  p2.push(new THREE.Vector3(jStair,gy(exitZ),exitZ));
+  toV3([[jStair+5,5],[44,18]]).forEach(v=>p2.push(v));
+  drawArrowPath(p2,COLS.east);
+  /* 北梯（青）→ 直切合球場 */
+  let p3=[new THREE.Vector3(corrX,fY,nsMid),new THREE.Vector3(corrX,fY,nStairZ)];
+  for(let ff=curFloor;ff>=B.fMin;ff--)p3.push(new THREE.Vector3(corrX,baseY+(ff-B.fMin)*FLOOR_H+FLOOR_H*0.5,nStairZ));
+  toV3([[corrX+5,nStairZ+5],[40,24]]).forEach(v=>p3.push(v));
+  drawArrowPath(p3,COLS.northSt);
+}
+function routeMass(B){
+  if(curKey==='xingzheng'){
+    const s=massShafts.xingzheng[0]; const yTop=s.topY-FLOOR_H*1.5;
+    [[B.xPos+6],[B.xPos-6]].forEach(([sx])=>{
+      const pts=[new THREE.Vector3(sx,yTop,s.wz),new THREE.Vector3(s.wx,yTop,s.wz),
+        new THREE.Vector3(s.wx,terrainY(B.zPos)+1.2,s.wz),
+        new THREE.Vector3(32,gy(-38),-38),new THREE.Vector3(28,gy(-41),-41),new THREE.Vector3(plazaX,gy(plazaZ),plazaZ)];
+      drawArrowPath(pts,COLS.single);
+    });
+  } else {
+    massShafts.huodong.forEach(s=>{
+      const pts=[new THREE.Vector3(s.wx,s.topY-1,s.wz),new THREE.Vector3(s.wx,terrainY(B.zPos)+1.2,s.wz),
+        new THREE.Vector3(46,gy(s.wz),s.wz),new THREE.Vector3(46,gy(-40),-40),new THREE.Vector3(32,gy(-42),-42),new THREE.Vector3(plazaX+2,gy(plazaZ),plazaZ)];
+      drawArrowPath(pts,COLS.single);
+    });
+  }
+}
+function animateArrows(time){ if(!routeObj)return; routeObj.children.forEach(o=>{ if(o.geometry?.type==='ConeGeometry'){const cv=o.userData.curve;let t=(o.userData.t+time*0.00009)%1;o.position.copy(cv.getPointAt(t));o.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),cv.getTangentAt(t).normalize());}}); }
+
+/* ───────── UI ───────── */
+const floorsEl=document.getElementById('floors');
+function buildFloorButtons(){
+  const B=BUILDINGS[curKey]; floorsEl.innerHTML='';
+  if(B.kind==='mass')return;
+  for(let f=B.fMax;f>=B.fMin;f--){
+    const b=document.createElement('button'); b.textContent=f===0?'B1':f+'F';
+    if(f===curFloor)b.classList.add('active'); b.onclick=()=>setFloor(f); floorsEl.appendChild(b);
+  }
+}
+function updateDestText(){
+  const B=BUILDINGS[curKey]; const el=document.getElementById('dest');
+  if(curKey==='xinyi') el.innerHTML='避難方向：往北（兩側於和平樓後方匯合 → 東行 → 籃球場東側山坡 → 籃球場）<br>1F/2F 東側（集乳室~體育組、706~906）→ 往南 → 行政大樓前空地';
+  else if(curKey==='heping') el.textContent='避難方向：往北（兩側於和平樓後方匯合 → 東行 → 籃球場東側山坡 → 籃球場）';
+  else if(curKey==='kexue') el.textContent='避難方向：就近 → 合球場（各樓梯出口直接前往合球場）';
+  else if(curKey==='xingzheng') el.textContent='避難方向：左右向中間合流 → 中央樓梯 → 入口（南）→ 行政大樓前空地';
+  else if(curKey==='huodong') el.textContent='避難方向：東側樓梯 → 出口 → 行政大樓前空地';
+  else el.textContent='避難方向：往南 → 行政大樓前空地';
+}
+function buildLegend(){
+  const B=BUILDINGS[curKey]; const el=document.getElementById('legend');
+  if(B.kind==='mass'){ el.innerHTML='<span class="dot" style="background:var(--single)"></span>疏散路線 → 行政大樓前空地<br><span class="dot" style="background:var(--safe)"></span>樓梯豎井'; return; }
+  if(B.kind==='L'){ el.innerHTML='<span class="dot" style="background:var(--west)"></span>西梯（東西翼西端）→ 合球場<br><span class="dot" style="background:var(--east)"></span>轉角梯（兩翼交會）→ 合球場<br><span class="dot" style="background:var(--north-stair)"></span>北梯（南北翼北端）→ 合球場<br><span class="dot" style="background:var(--safe)"></span>樓梯 · <span class="dot" style="background:#9aa39a"></span>教室'; return; }
+  const single=B.stairCols.length<2;
+  if(single){ el.innerHTML='<span class="dot" style="background:var(--single)"></span>疏散路線（中央樓梯）<br><span class="dot" style="background:var(--safe)"></span>樓梯<br><span class="dot" style="background:#9aa39a"></span>教室隔間'; } 
+  else {
+    let extra = curKey==='xinyi' ? '<br><span class="dot" style="background:var(--south-special)"></span>1F/2F 東側特例（東梯 → 往南）' : '';
+    el.innerHTML='<span class="dot" style="background:var(--west)"></span>西側路線（左樓梯）<br><span class="dot" style="background:var(--east)"></span>東側路線（右樓梯）'+extra+'<br><span class="dot" style="background:var(--safe)"></span>樓梯 · <span class="dot" style="background:#9aa39a"></span>教室';
+  }
+}
+document.getElementById('buildingSel').onchange=function(){routeOn=false;routeBtn.textContent='顯示疏散路線';routeBtn.classList.remove('off');clearRoute();build(this.value);};
+const routeBtn=document.getElementById('routeBtn');
+routeBtn.onclick=()=>{routeOn=!routeOn;routeBtn.textContent=routeOn?'隱藏疏散路線':'顯示疏散路線';routeBtn.classList.toggle('off',routeOn);routeOn?drawRoute():clearRoute();};
+document.getElementById('arrowChk').onchange=function(){showArrows=this.checked;applyArrowVis();};
+
+const tip=document.getElementById('tip');
+const DIRTXT={W:'往西側樓梯',E:'往東側樓梯',S:'往中央樓梯',N:'往北側樓梯'};
+addEventListener('pointermove',e=>{
+  mouse.x=(e.clientX/innerWidth)*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;
+  raycaster.setFromCamera(mouse,camera);
+  const vis=roomMeshes.filter(m=>m.userData.floor===curFloor);
+  const hit=raycaster.intersectObjects(vis,false);
+  roomMeshes.forEach(m=>{if(m.userData.baseMat)m.material=m.userData.baseMat;});
+  if(hit.length){const m=hit[0].object;m.material=matRoomHi;
+    const u=m.userData; const B=BUILDINGS[curKey]; const dest=u.dest||B.dest;
+    const dt=u.dir?` → ${DIRTXT[u.dir]} → ${DEST_LABEL[dest]}`:'';
+    tip.style.display='block';tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';
+    tip.textContent=`${u.floor===0?'B1':u.floor+'F'} · ${u.name}${dt}`;
+  } else tip.style.display='none';
+});
+
+build('heping'); updateCam();
+(function loop(t){requestAnimationFrame(loop);animateArrows(t);renderer.render(scene,camera);})(0);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
