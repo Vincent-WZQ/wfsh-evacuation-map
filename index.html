@@ -84,8 +84,8 @@
 <div id="panel">
   <div class="panel-header" id="panelHeader">
     <div class="titles">
-      <h1>萬芳高中地震災害疏散路線</h1>
-      <p class="sub">測試版(實際路線依校園防災地圖為準)</p>
+      <h1>萬芳高中 · 疏散路線</h1>
+      <p class="sub">地震災害 — 114年9月18日版</p>
     </div>
     <button id="toggleBtn">▼ 收合</button>
   </div>
@@ -155,7 +155,6 @@ const BUILDINGS={
       2:[C('男廁','aux'),C('','stair'),C('S311','room','W'),C('S211','room','W'),C('S111','room','W'),C('706','room','E',{dest:'south'}),C('806','room','E',{dest:'south'}),C('','stair'),C('906','room','E',{dest:'south'}),C('女廁','aux')],
       1:[C('無障礙男女廁','aux'),C('','stair'),C('教官室','room','W'),C('學務處','room','W'),C('防災暨交安教室','room','W'),C('集乳室','room','E',{dest:'south'}),C('健康中心','room','E',{dest:'south'}),C('','stair'),C('體育組','room','E',{dest:'south'}),C('器材室','aux')]
     }},
-  /* 全面校正仁愛樓：西側樓梯在 col2，905等教室在西端（方向東，但路線區帶為西 W） */
   renai:{kind:'bar',title:'仁愛樓',dest:'south',zPos:-12,xPos:-8,stairCols:[2,7],fMin:1,fMax:4, baseY: 28.2,
     rows:{
       4:[C('男廁','aux'),C('905','room','E',{zone:'W'}),C('','stair'),C('904','room','W',{zone:'W'}),C('903','room','W',{zone:'W'}),C('902','room','E',{zone:'E'}),C('901','room','E',{zone:'E'}),C('','stair'),C('女廁','aux')],
@@ -313,7 +312,6 @@ function makeLabel(text,opt={}){
 }
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 
-/* 使用 zone 來決定箭頭顏色，讓顏色與指向 (dir) 脫鉤 */
 function makeArrow(dir, zone){
   const c=document.createElement('canvas'); c.width=96;c.height=64;
   const x=c.getContext('2d');
@@ -394,10 +392,38 @@ function addCherryBlossomTree(x, z, scale=1) {
   scene.add(tg);
 }
 
+function addOffCampusTree(x, z, scale=1) {
+  const y = terrainY(x, z);
+  const tg = new THREE.Group();
+  tg.position.set(x, y, z);
+  tg.scale.set(scale, scale, scale);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 3), new THREE.MeshStandardMaterial({color: 0x94a3b8, roughness: 0.9, transparent: true, opacity: 0.6}));
+  trunk.position.y = 1.5; tg.add(trunk);
+  const canopy = new THREE.Mesh(new THREE.IcosahedronGeometry(2.5, 0), new THREE.MeshStandardMaterial({ color: 0x6ee7b7, transparent: true, opacity: 0.25, roughness: 0.4, flatShading: true }));
+  canopy.position.y = 4; tg.add(canopy);
+  scene.add(tg);
+}
+
 // 放置一般樹木
 [[52, -45], [0, -42], [55, -20], [-40, -10], [-30, 0], [-25, 40], [-10, 50], [10, 52], [30, 48], [-45, 10], [-42, 20]].forEach(pos => addTree(pos[0], pos[1], 0.8 + Math.random()*0.5));
 // 行政大樓前櫻花樹
 addCherryBlossomTree(46, -36, 0.85);
+
+// 放置非校地背景淡色樹木
+for(let i=0; i<80; i++){
+  let rx, rz;
+  const zone = Math.random();
+  if(zone < 0.3) { 
+    rx = 58 + Math.random() * 30; rz = -60 + Math.random() * 160;
+  } else if(zone < 0.6) { 
+    rx = -90 + Math.random() * 35; rz = -60 + Math.random() * 160;
+  } else if(zone < 0.8) { 
+    rx = -50 + Math.random() * 100; rz = 90 + Math.random() * 40;
+  } else { 
+    rx = -40 + Math.random() * 90; rz = -90 + Math.random() * 25;
+  }
+  addOffCampusTree(rx, rz, 0.7 + Math.random() * 0.6);
+}
 
 /* ───────── 動態標示陣列與生成函數 ───────── */
 const dynamicMarkers = [];
@@ -511,14 +537,12 @@ addRescueEquipment(28, -26);
   infield.rotation.x=-Math.PI/2; infield.position.set(0,0.05,0);
   const tg=new THREE.Group(); tg.position.set(0,50.5,77); tg.rotation.y=ROT;
   tg.add(track); tg.add(infield); ctx3d.add(tg);
-  // 大操場懸空標籤
   addHoverLabel('大操場（就近避難場所·就地疏散）', 0, 50.5, 77, 14, evacOpt);
 })();
 
-/* 籃排球場 (高亮淡黃色) */
+/* 籃排球場 */
 const courtX=-11.5, courtZ=45;
 const bkC=absolutePlane(57, 14, '#fef9c3', courtX, 37.41, courtZ); ctx3d.add(bkC);
-// 籃排球場懸空標籤
 addHoverLabel('籃排球場（疏散集合·避難場所）', courtX, 37.41, courtZ, 14, evacOpt);
 
 /* 警衛室與校門 */
@@ -543,33 +567,59 @@ const aedL = makeLabel('AED', {fs: 22, scale: 0.028, bg: 'rgba(239,68,68,.95)', 
 aedL.position.set(40, 24.5+3.5, -57); 
 ctx3d.add(aedL);
 
-/* 合球場 (高亮淡黃色) */
+/* 合球場 */
 ctx3d.add(absolutePlane(26,16,'#fef9c3',50,36.61,22));
-// 合球場懸空標籤
 addHoverLabel('合球場（科學大樓疏散集合）', 50, 36.61, 22, 14, evacOpt);
 
-/* 行政大樓前空地 (高亮淡黃色) */
+/* 行政大樓前空地 */
 const plazaX=35, plazaZ=-47.5;
 ctx3d.add(absolutePlane(40, 24, '#fef9c3', plazaX, 24.51 + 0.05, plazaZ));
-// 行政大樓廣場懸空標籤
 addHoverLabel('行政大樓前空地（疏散集合·避難場所）', plazaX, 24.51, plazaZ + 5, 16, evacOpt);
 
 /* 巡邏小白貓 */
-let cat;
+let cat, catModel, catTail, zzzSprite;
+let catAngle = 0;
+let catState = 'walking';
+let sleepStartTime = 0;
+let lastTime = 0;
+
 (function(){
   cat = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.6});
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.8), mat);
+  catModel = new THREE.Group();
+  const matWhite = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.6});
+  const matBlack = new THREE.MeshStandardMaterial({color:0x222222, roughness:0.8});
+  
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.8), matWhite);
   body.position.y = 0.2; body.castShadow = true; body.receiveShadow = true;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.4), mat);
+  
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.4), matWhite);
   head.position.set(0, 0.45, 0.45); head.castShadow = true;
+  
   const earGeo = new THREE.ConeGeometry(0.1, 0.2, 4);
-  const earL = new THREE.Mesh(earGeo, mat); earL.position.set(0.12, 0.7, 0.45);
-  const earR = new THREE.Mesh(earGeo, mat); earR.position.set(-0.12, 0.7, 0.45);
-  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5), mat);
-  tail.position.set(0, 0.4, -0.55); tail.rotation.x = Math.PI/4;
-  cat.add(body, head, earL, earR, tail);
+  const earL = new THREE.Mesh(earGeo, matBlack); earL.position.set(0.12, 0.7, 0.45);
+  const earR = new THREE.Mesh(earGeo, matBlack); earR.position.set(-0.12, 0.7, 0.45);
+  
+  catTail = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5), matBlack);
+  catTail.position.set(0, 0.4, -0.55); catTail.rotation.x = Math.PI/4;
+  
+  catModel.add(body, head, earL, earR, catTail);
+  cat.add(catModel);
   cat.scale.set(1.5, 1.5, 1.5);
+  
+  const zzzCanvas = document.createElement('canvas');
+  zzzCanvas.width = 128; zzzCanvas.height = 64;
+  const zctx = zzzCanvas.getContext('2d');
+  zctx.fillStyle = '#1e293b'; 
+  zctx.font = 'bold 44px "Noto Sans TC", sans-serif';
+  zctx.fillText('Zzz', 10, 48);
+  const zzzTex = new THREE.CanvasTexture(zzzCanvas);
+  const zzzMat = new THREE.SpriteMaterial({map: zzzTex, depthTest: false, transparent: true});
+  zzzSprite = new THREE.Sprite(zzzMat);
+  zzzSprite.scale.set(1.2, 0.6, 1);
+  zzzSprite.position.set(0.2, 1.2, 0);
+  zzzSprite.visible = false;
+  cat.add(zzzSprite);
+
   ctx3d.add(cat);
 })();
 
@@ -629,7 +679,6 @@ function buildMass(key){
   const body=new THREE.Mesh(new THREE.BoxGeometry(B.w,h,B.d),new THREE.MeshStandardMaterial({color:0xf8fafc,roughness:0.2,transparent:true,opacity:0.25}));
   body.position.y=h/2; body.castShadow=false; g.add(body);
   
-  // 量體的各層樓板加上半透明，確保能透視內部
   for(let f=1;f<B.floors;f++){
     const ln=new THREE.Mesh(new THREE.BoxGeometry(B.w+0.1,0.1,B.d+0.1),new THREE.MeshStandardMaterial({color:0xcbd5e1, transparent: true, opacity: 0.3}));
     ln.position.y=f*FLOOR_H;
@@ -830,6 +879,19 @@ function routeBar(B){
   const xs=geom.stairXs.map(x=>x+B.xPos);
   const wStair=Math.max(...xs), eStair=Math.min(...xs);
   const wEnd=B.xPos+geom.bodyLen/2+6, eEnd=B.xPos-geom.bodyLen/2-6;
+  
+  // 找出該樓層內各個 zone 的最邊緣 X 座標 (處理走廊內部光線用)
+  let westMostEdge = wEnd; 
+  let eastMostEdge = eEnd;
+  const currentRooms = B.rows[curFloor] || [];
+  currentRooms.forEach((c, idx) => {
+    if(c.type === 'room') {
+      const xc = geom.colX(idx) + B.xPos;
+      if (c.zone === 'W') westMostEdge = Math.max(westMostEdge, xc + CELL_W*c.span/2);
+      if (c.zone === 'E') eastMostEdge = Math.min(eastMostEdge, xc - CELL_W*c.span/2);
+    }
+  });
+
   function branch(stairWX,side){
     const sideDir = side==='single'?'S':(side==='west'?'W':'E');
     const dest = side==='single'?B.dest:destForSide(B,sideDir);
@@ -851,7 +913,6 @@ function routeBar(B){
     toV3(tail).forEach(v=>pts.push(v));
     drawArrowPath(pts,col);
 
-    // 繪製各樓層走廊兩端到樓梯的內部光流
     const wEdge = B.xPos + geom.bodyLen/2;
     const eEdge = B.xPos - geom.bodyLen/2;
     if (side === 'single') {
@@ -859,9 +920,13 @@ function routeBar(B){
       drawArrowPath([new THREE.Vector3(eEdge, fY, corrZ), new THREE.Vector3(stairWX, fY, corrZ)], col);
     } else {
       const midX = (wStair + eStair) / 2;
-      const endX_floor = side === 'west' ? wEdge : eEdge;
-      drawArrowPath([new THREE.Vector3(midX, fY, corrZ), new THREE.Vector3(stairWX, fY, corrZ)], col);
-      drawArrowPath([new THREE.Vector3(endX_floor, fY, corrZ), new THREE.Vector3(stairWX, fY, corrZ)], col);
+      if (side === 'west') {
+        drawArrowPath([new THREE.Vector3(midX, fY, corrZ), new THREE.Vector3(stairWX, fY, corrZ)], col);
+        drawArrowPath([new THREE.Vector3(westMostEdge, fY, corrZ), new THREE.Vector3(stairWX, fY, corrZ)], col);
+      } else {
+        drawArrowPath([new THREE.Vector3(midX, fY, corrZ), new THREE.Vector3(stairWX, fY, corrZ)], col);
+        drawArrowPath([new THREE.Vector3(eastMostEdge, fY, corrZ), new THREE.Vector3(stairWX, fY, corrZ)], col);
+      }
     }
   }
   if(xs.length>=2){branch(wStair,'west');branch(eStair,'east');} else branch(xs[0],'single');
@@ -910,19 +975,47 @@ function routeMass(B){
 
 // 動畫迴圈更新
 function animateDynamicObjects(time){ 
+  if (!lastTime) lastTime = time;
+  const dt = time - lastTime;
+  lastTime = time;
+
   if(routeObj){
     routeObj.children.forEach(o=>{ if(o.geometry?.type==='ConeGeometry'){const cv=o.userData.curve;let t=(o.userData.t+time*0.00009)%1;o.position.copy(cv.getPointAt(t));o.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),cv.getTangentAt(t).normalize());}}); 
   }
+  
   if(cat){
-    const speed = time * 0.00018; 
     const cx = 20; const cz = -45; const rx = 20; const rz = 8;
-    cat.position.x = cx + Math.cos(speed) * rx;
-    cat.position.z = cz + Math.sin(speed) * rz;
-    cat.position.y = 24.51 + Math.abs(Math.sin(time * 0.005)) * 0.12;
-    cat.lookAt(cx + Math.cos(speed + 0.1) * rx, cat.position.y, cz + Math.sin(speed + 0.1) * rz);
+    if (catState === 'walking') {
+        catAngle += dt * 0.00018; 
+        const normalized = catAngle % (Math.PI * 2);
+        if (normalized > Math.PI && normalized < Math.PI + 0.1 && dt < 100) {
+            catState = 'sleeping';
+            sleepStartTime = time;
+            zzzSprite.visible = true;
+            catModel.position.y = -0.15; 
+            catTail.rotation.x = Math.PI / 2 + 0.1; 
+            catAngle = Math.PI; 
+        } else {
+            cat.position.x = cx + Math.cos(catAngle) * rx;
+            cat.position.z = cz + Math.sin(catAngle) * rz;
+            cat.position.y = 24.51 + Math.abs(Math.sin(time * 0.005)) * 0.12;
+            cat.lookAt(cx + Math.cos(catAngle + 0.1) * rx, cat.position.y, cz + Math.sin(catAngle + 0.1) * rz);
+        }
+    } else if (catState === 'sleeping') {
+        cat.position.y = 24.51; 
+        if (time - sleepStartTime > 10000) { 
+            catState = 'walking';
+            zzzSprite.visible = false;
+            catModel.position.y = 0; 
+            catTail.rotation.x = Math.PI / 4; 
+            catAngle += 0.12; 
+        } else {
+            zzzSprite.position.y = 1.0 + Math.sin(time * 0.003) * 0.1;
+            zzzSprite.material.opacity = 0.4 + Math.abs(Math.sin(time * 0.002)) * 0.6;
+        }
+    }
   }
   
-  // 動態標示更新
   dynamicMarkers.forEach(m => {
     if (m.type === 'cross' || m.type === 'hammer' || m.type === 'comm') {
       m.mesh.rotation.y += 0.015;
